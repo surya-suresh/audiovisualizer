@@ -8,7 +8,6 @@ import {OutputPass} from 'three/examples/jsm/postprocessing/OutputPass';
 const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
-//renderer.setClearColor(0x222222);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
@@ -19,10 +18,10 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const params = {
-	red: 1.0,
-	green: 1.0,
+	red: 0.0,
+	green: 0.5,
 	blue: 1.0,
-	threshold: 0.5,
+	threshold: 0.35,
 	strength: 0.5,
 	radius: 0.8
 }
@@ -43,14 +42,14 @@ bloomComposer.addPass(bloomPass);
 const outputPass = new OutputPass();
 bloomComposer.addPass(outputPass);
 
-camera.position.set(0, -2, 14);
+camera.position.set(0, -2, 15);
 camera.lookAt(0, 0, 0);
 
 const uniforms = {
 	u_time: {type: 'f', value: 0.0},
 	u_frequency: {type: 'f', value: 0.0},
-	u_red: {type: 'f', value: 1.0},
-	u_green: {type: 'f', value: 1.0},
+	u_red: {type: 'f', value: 0.0},
+	u_green: {type: 'f', value: 0.5},
 	u_blue: {type: 'f', value: 1.0}
 }
 
@@ -70,64 +69,67 @@ camera.add(listener);
 
 const sound = new THREE.Audio(listener);
 
-const audioLoader = new THREE.AudioLoader();
-audioLoader.load('./assets/Beats.mp3', function(buffer) {
-	sound.setBuffer(buffer);
-	window.addEventListener('click', function() {
-		sound.play();
-	});
-});
+// Replace this with microphone input
+navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+    const audioContext = listener.context;
+    const microphone = audioContext.createMediaStreamSource(stream);
+    sound.setNodeSource(microphone);
+    
+    // Create an analyser for microphone input
+    const analyser = new THREE.AudioAnalyser(sound, 32);
 
-const analyser = new THREE.AudioAnalyser(sound, 32);
+    // GUI and folders
+    const gui = new GUI();
 
-const gui = new GUI();
+    const colorsFolder = gui.addFolder('Colors');
+    colorsFolder.add(params, 'red', 0, 1).onChange(function(value) {
+        uniforms.u_red.value = Number(value);
+    });
+    colorsFolder.add(params, 'green', 0, 1).onChange(function(value) {
+        uniforms.u_green.value = Number(value);
+    });
+    colorsFolder.add(params, 'blue', 0, 1).onChange(function(value) {
+        uniforms.u_blue.value = Number(value);
+    });
 
-const colorsFolder = gui.addFolder('Colors');
-colorsFolder.add(params, 'red', 0, 1).onChange(function(value) {
-	uniforms.u_red.value = Number(value);
-});
-colorsFolder.add(params, 'green', 0, 1).onChange(function(value) {
-	uniforms.u_green.value = Number(value);
-});
-colorsFolder.add(params, 'blue', 0, 1).onChange(function(value) {
-	uniforms.u_blue.value = Number(value);
-});
+    const bloomFolder = gui.addFolder('Bloom');
+    bloomFolder.add(params, 'threshold', 0, 1).onChange(function(value) {
+        bloomPass.threshold = Number(value);
+    });
+    bloomFolder.add(params, 'strength', 0, 3).onChange(function(value) {
+        bloomPass.strength = Number(value);
+    });
+    bloomFolder.add(params, 'radius', 0, 1).onChange(function(value) {
+        bloomPass.radius = Number(value);
+    });
 
-const bloomFolder = gui.addFolder('Bloom');
-bloomFolder.add(params, 'threshold', 0, 1).onChange(function(value) {
-	bloomPass.threshold = Number(value);
-});
-bloomFolder.add(params, 'strength', 0, 3).onChange(function(value) {
-	bloomPass.strength = Number(value);
-});
-bloomFolder.add(params, 'radius', 0, 1).onChange(function(value) {
-	bloomPass.radius = Number(value);
-});
+    let mouseX = 0;
+    let mouseY = 0;
+    document.addEventListener('mousemove', function(e) {
+        let windowHalfX = window.innerWidth / 2;
+        let windowHalfY = window.innerHeight / 2;
+        mouseX = (e.clientX - windowHalfX) / 100;
+        mouseY = (e.clientY - windowHalfY) / 100;
+    });
 
-let mouseX = 0;
-let mouseY = 0;
-document.addEventListener('mousemove', function(e) {
-	let windowHalfX = window.innerWidth / 2;
-	let windowHalfY = window.innerHeight / 2;
-	mouseX = (e.clientX - windowHalfX) / 100;
-	mouseY = (e.clientY - windowHalfY) / 100;
-});
+    const clock = new THREE.Clock();
+    function animate() {
+        camera.position.x += (mouseX - camera.position.x) * .05;
+        camera.position.y += (-mouseY - camera.position.y) * 0.5;
+        camera.lookAt(scene.position);
+        uniforms.u_time.value = clock.getElapsedTime();
+        uniforms.u_frequency.value = analyser.getAverageFrequency();
+        bloomComposer.render();
+        requestAnimationFrame(animate);
+    }
+    animate();
 
-const clock = new THREE.Clock();
-function animate() {
-	camera.position.x += (mouseX - camera.position.x) * .05;
-	camera.position.y += (-mouseY - camera.position.y) * 0.5;
-	camera.lookAt(scene.position);
-	uniforms.u_time.value = clock.getElapsedTime();
-	uniforms.u_frequency.value = analyser.getAverageFrequency();
-    bloomComposer.render();
-	requestAnimationFrame(animate);
-}
-animate();
-
-window.addEventListener('resize', function() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-	bloomComposer.setSize(window.innerWidth, window.innerHeight);
+    window.addEventListener('resize', function() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        bloomComposer.setSize(window.innerWidth, window.innerHeight);
+    });
+}).catch(function(err) {
+    console.log("The following error occurred: " + err);
 });
